@@ -94,6 +94,7 @@ def load_stable_diffusion(config_path):
     if not os.path.exists(ckpt_path):
         print("Downloading model checkpoint...")
         os.system(f"wget https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.ckpt?download=true -O {ckpt_path}")
+    # ckpt_path = '/home/xxx/cutiegonutsfurrymix_v31.safetensors'
     config = OmegaConf.load(config_path)
     model = load_model_from_config(config, ckpt_path)
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")

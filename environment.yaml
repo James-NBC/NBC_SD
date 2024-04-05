@@ -1,4 +1,4 @@
-name: ldm
+name: NBC_SD
 channels:
   - pytorch
   - defaults
