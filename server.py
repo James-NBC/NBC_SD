@@ -128,43 +128,46 @@ def generate_image():
     requested_f = json_request['f']
     requested_ddim_steps = json_request['ddim_steps']
     requested_n_samples = json_request['n_samples']
-    # requested_scale = json_request['scale']
+    requested_scale = json_request['scale']
     start = time.time()
     start_code = None
     precision_scope = autocast
     with torch.no_grad():
         with precision_scope("cuda"):
             with model.ema_scope():
-                for prompts in tqdm([[prompt]], desc="data"):
-                    uc = None
-                    uc = model.get_learned_conditioning(1 * [""])
-                    if isinstance(prompts, tuple):
-                        prompts = list(prompts)
-                    c = model.get_learned_conditioning(prompts)
-                    shape = [requested_C, requested_H // requested_W, requested_W // requested_f]
-                    samples_ddim, _ = sampler.sample(S=requested_ddim_steps,
-                                                        conditioning=c,
-                                                        batch_size=requested_n_samples,
-                                                        shape=shape,
-                                                        verbose=False,
-                                                        unconditional_guidance_scale=7.5,
-                                                        unconditional_conditioning=uc,
-                                                        eta=0,
-                                                        x_T=start_code)
+                for n in trange(1, desc="Sampling"):
+                    for prompts in tqdm([[prompt]], desc="data"):
+                        uc = None
+                        if requested_scale != 1.0:
+                            uc = model.get_learned_conditioning(1 * [""])
+                        if isinstance(prompts, tuple):
+                            prompts = list(prompts)
+                        c = model.get_learned_conditioning(prompts)
+                        shape = [requested_C, requested_H // requested_f, requested_W // requested_f]
+                        samples_ddim, _ = sampler.sample(S=requested_ddim_steps,
+                                                         conditioning=c,
+                                                         batch_size=requested_n_samples,
+                                                         shape=shape,
+                                                         verbose=False,
+                                                         unconditional_guidance_scale=requested_scale,
+                                                         unconditional_conditioning=uc,
+                                                         eta=0.0,
+                                                         x_T=start_code)
 
-                    x_samples_ddim = model.decode_first_stage(samples_ddim)
-                    x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
-                    x_samples_ddim = x_samples_ddim.cpu().permute(0, 2, 3, 1).numpy()
+                        x_samples_ddim = model.decode_first_stage(samples_ddim)
+                        x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
+                        x_samples_ddim = x_samples_ddim.cpu().permute(0, 2, 3, 1).numpy()
 
-                    x_checked_image, has_nsfw_concept = check_safety(x_samples_ddim)
+                        x_checked_image, has_nsfw_concept = check_safety(x_samples_ddim)
 
-                    x_checked_image_torch = torch.from_numpy(x_checked_image).permute(0, 3, 1, 2)
+                        x_checked_image_torch = torch.from_numpy(x_checked_image).permute(0, 3, 1, 2)
 
-                    for x_sample in x_checked_image_torch:
-                        x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
-                        img = Image.fromarray(x_sample.astype(np.uint8))
-                        img = put_watermark(img, wm_encoder)
-                        img.save(output_path)  
+                        for x_sample in x_checked_image_torch:
+                            x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
+                            img = Image.fromarray(x_sample.astype(np.uint8))
+                            img = put_watermark(img, wm_encoder)
+                            img.save(output_path)
+                            
     return jsonify({"output_path": output_path, "time": time.time() - start})  
 
 if __name__ == "__main__":

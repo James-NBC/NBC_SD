@@ -20,11 +20,12 @@ def main():
         "output_path": output_path,
         "prompt": prompt,
         "C": 4,
-        "H": 256,
-        "W": 256,
+        "H": 512,
+        "W": 512,
         "f": 8,
-        "ddim_steps": 50,
-        "n_samples": 1
+        "ddim_steps": 25,
+        "n_samples": 1,
+        "scale": 7.5,
     }
     response = requests.post(url, json=json_request)
     print(response.status_code)
