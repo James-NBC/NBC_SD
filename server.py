@@ -10,7 +10,6 @@ from itertools import islice
 from einops import rearrange
 from torchvision.utils import make_grid
 import time
-import dill
 from pytorch_lightning import seed_everything
 from torch import autocast
 from contextlib import nullcontext
@@ -22,7 +21,8 @@ from ldm.models.diffusion.plms import PLMSSampler
 
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from transformers import AutoFeatureExtractor
-import Flask
+from flask import Flask, request, jsonify
+
 
 app = Flask(__name__)
 
@@ -88,12 +88,86 @@ def check_safety(x_image):
             x_checked_image[i] = load_replacement(x_checked_image[i])
     return x_checked_image, has_nsfw_concept
 
-def load_stable_diffusion(config_path, ckpt_path):
+def load_stable_diffusion(config_path):
+    os.makedirs("checkpoints", exist_ok=True)
+    ckpt_path = "checkpoints/sd_v1_5.ckpt"
+    if not os.path.exists(ckpt_path):
+        print("Downloading model checkpoint...")
+        os.system(f"wget https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.ckpt?download=true -O {ckpt_path}")
     config = OmegaConf.load(config_path)
     model = load_model_from_config(config, ckpt_path)
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    sampler = PLMSSampler(model)
     model.to(device)
-    return model
+    return model, sampler
 
-if __name__ == "main":
-    app.run(host='0.0.0.0')
+wm = "StableDiffusionV1"
+wm_encoder = WatermarkEncoder()
+wm_encoder.set_watermark('bytes', wm.encode('utf-8'))
+CONFIG_PATH = "inference_config.yaml"
+
+def parse_args():
+    parser = argparse.ArgumentParser("Stable Diffusion Inference")
+    parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
+    return parser.parse_args()
+
+model, sampler = load_stable_diffusion(CONFIG_PATH)
+
+@app.route('/')
+def index():
+    return "Hello, World!"
+
+@app.route('/generate_image', methods=['POST'])
+def generate_image():
+    json_request = request.get_json(force=True)
+    output_path = json_request['output_path']
+    prompt = json_request['prompt']
+    requested_C = json_request['C']
+    requested_H = json_request['H']
+    requested_W = json_request['W']
+    requested_f = json_request['f']
+    requested_ddim_steps = json_request['ddim_steps']
+    requested_n_samples = json_request['n_samples']
+    # requested_scale = json_request['scale']
+    start = time.time()
+    start_code = None
+    precision_scope = autocast
+    with torch.no_grad():
+        with precision_scope("cuda"):
+            with model.ema_scope():
+                for prompts in tqdm([[prompt]], desc="data"):
+                    uc = None
+                    uc = model.get_learned_conditioning(1 * [""])
+                    if isinstance(prompts, tuple):
+                        prompts = list(prompts)
+                    c = model.get_learned_conditioning(prompts)
+                    shape = [requested_C, requested_H // requested_W, requested_W // requested_f]
+                    samples_ddim, _ = sampler.sample(S=requested_ddim_steps,
+                                                        conditioning=c,
+                                                        batch_size=requested_n_samples,
+                                                        shape=shape,
+                                                        verbose=False,
+                                                        unconditional_guidance_scale=7.5,
+                                                        unconditional_conditioning=uc,
+                                                        eta=0,
+                                                        x_T=start_code)
+
+                    x_samples_ddim = model.decode_first_stage(samples_ddim)
+                    x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
+                    x_samples_ddim = x_samples_ddim.cpu().permute(0, 2, 3, 1).numpy()
+
+                    x_checked_image, has_nsfw_concept = check_safety(x_samples_ddim)
+
+                    x_checked_image_torch = torch.from_numpy(x_checked_image).permute(0, 3, 1, 2)
+
+                    for x_sample in x_checked_image_torch:
+                        x_sample = 255. * rearrange(x_sample.cpu().numpy(), 'c h w -> h w c')
+                        img = Image.fromarray(x_sample.astype(np.uint8))
+                        img = put_watermark(img, wm_encoder)
+                        img.save(output_path)  
+    return jsonify({"output_path": output_path, "time": time.time() - start})  
+
+if __name__ == "__main__":
+    args = parse_args()
+    seed_everything(42)
+    app.run(host='127.0.0.1', port = args.port)
