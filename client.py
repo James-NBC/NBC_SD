@@ -23,7 +23,7 @@ def main():
         "H": 512,
         "W": 512,
         "f": 8,
-        "ddim_steps": 50,
+        "ddim_steps": 25,
         "n_samples": 1,
         "scale": 7.5,
     }

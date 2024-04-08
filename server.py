@@ -114,7 +114,8 @@ def load_stable_diffusion(config_path, ckpt_path = None):
 def parse_args():
     parser = argparse.ArgumentParser("Stable Diffusion Inference")
     parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
-    parser.add_argument("--ckpt", type=str, default="checkpoints/vr.safetensors", help="Path to the model checkpoint")
+    parser.add_argument("--ckpt", type=str, required = True, help="Path to the model checkpoint")
+    parser.add_argument("--verifier", type=str, required = True, help="Path to the verifier model")
     return parser.parse_args()
 
 args = parse_args()
@@ -124,7 +125,7 @@ safety_checker = StableDiffusionSafetyChecker.from_pretrained(safety_model_id)
 wm = "StableDiffusionV1"
 wm_encoder = WatermarkEncoder()
 wm_encoder.set_watermark('bytes', wm.encode('utf-8'))
-verifier = onnxruntime.InferenceSession("feature_extractor.onnx")
+verifier = onnxruntime.InferenceSession(args)
 model, sampler = load_stable_diffusion("inference_config.yaml", args.ckpt)
 
 @app.route('/')
@@ -175,7 +176,9 @@ def generate_image():
 
                     x_checked_image_torch = torch.from_numpy(x_checked_image).permute(0, 3, 1, 2)
                     x_checked_image_numpy = x_checked_image_torch.cpu().numpy()
+                    print(x_checked_image_numpy.shape)
                     verified_embedding = verifier.run(None, {'input': x_checked_image_numpy.astype(np.float32)})[0].tolist()
+                    print(len(verified_embedding))
 
                     x_sample = 255. * rearrange(x_checked_image_numpy[0], 'c h w -> h w c')
                     img = Image.fromarray(x_sample.astype(np.uint8))
