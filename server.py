@@ -125,7 +125,7 @@ safety_checker = StableDiffusionSafetyChecker.from_pretrained(safety_model_id)
 wm = "StableDiffusionV1"
 wm_encoder = WatermarkEncoder()
 wm_encoder.set_watermark('bytes', wm.encode('utf-8'))
-verifier = onnxruntime.InferenceSession(args)
+verifier = onnxruntime.InferenceSession(args.verifier)
 model, sampler = load_stable_diffusion("inference_config.yaml", args.ckpt)
 
 @app.route('/')
