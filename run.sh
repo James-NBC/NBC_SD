@@ -4,4 +4,4 @@ source activate NBC_SD
 # variable port
 export PORT=5000
 python server.py --port $PORT
-python client.py --port 5000 --prompt "a cat"
+python client.py --port $PORT --prompt "a cat"
