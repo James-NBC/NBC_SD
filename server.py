@@ -97,13 +97,10 @@ def check_safety(x_image):
     return x_checked_image, has_nsfw_concept
 
 
-def load_stable_diffusion(config_path, ckpt_path = None):
-    os.makedirs("checkpoints", exist_ok=True)
-    if ckpt_path is None:
-        ckpt_path = "checkpoints/sd_v1_5.ckpt"
-    if not os.path.exists(ckpt_path):
-        print("Downloading model checkpoint...")
-        os.system(f"wget https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.ckpt?download=true -O {ckpt_path}")
+def load_stable_diffusion(config_path, ckpt_path):
+    # if not os.path.exists(ckpt_path):
+    #     print("Downloading model checkpoint...")
+    #     os.system(f"wget https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.ckpt?download=true -O {ckpt_path}")
     config = OmegaConf.load(config_path)
     model = load_model_from_config(config, ckpt_path)
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
